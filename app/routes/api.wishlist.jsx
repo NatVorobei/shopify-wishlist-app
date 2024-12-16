@@ -1,5 +1,4 @@
 import { json } from "@remix-run/node";
-import { cors } from "remix-utils/cors";
 
 export async function loader() {
   return json({
