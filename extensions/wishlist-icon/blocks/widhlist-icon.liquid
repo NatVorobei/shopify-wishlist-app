@@ -25,25 +25,32 @@
           },
           wishlisted: false,
           addToWishlist() {
-              
               let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
 
-              const productIndex = wishlist.indexOf("{{ product.id }}");
-
-              if(this.wishlisted){
+              const productData = {
+                  id: "{{ product.id }}",
+                  title: "{{ product.title }}",
+                  price: "{{ product.price | money }}",
+                  image: "{{ product.featured_image | image_url: 'small' }}",
+              };
+          
+              // Check if product is already in wishlist
+              const productIndex = wishlist.findIndex(item => item.id === productData.id);
+          
+              if (this.wishlisted) {
                   wishlist.splice(productIndex, 1);
                   this.wishlisted = false;
               } else {
-                  wishlist.push("{{ product.id }}");
+                  wishlist.push(productData);
                   this.wishlisted = true;
               }
-
+          
               localStorage.setItem('wishlist', JSON.stringify(wishlist));
+          
           }
       }))
   })
 </script>
-
 
 <style>
   .wishlist-inspire__icon{
@@ -65,8 +72,8 @@
     width: 2rem;
     height: 2rem;
   }
-
 </style>
+
 {% schema %}
 {
   "name": "Wishlist icon",
@@ -93,61 +100,3 @@
   ]
 }
 {% endschema %}
-
-
-
-{% comment %} <script>
-  document.addEventListener('alpine:init', () => {
-      Alpine.data('wishlist', () => ({
-          init(){
-            fetch(this.appUrl + "api/wishlist"+"?customerId={{ customer.id }}&productId={{ product.id }}&shop={{ shop.permanent_domain }}")
-                .then(response => response.json())
-                .then(result => {
-                    if(result.data.length > 0){
-                      this.wishlisted = true;
-                    }
-                })
-                .catch(error => console.log('error', error));
-          },
-          wishlisted: false,
-          appUrl: "https://statistics-province-directly-peninsula.trycloudflare.com",
-          addToWishlist() {
-              // TODO: send data to database save wishlist
-              {%  unless customer  %}
-                alert('Please login to add to wishlist');
-                return;
-              {% endunless %}
-
-              var formdata = new FormData();
-              formdata.append("customerId", "{{ customer.id }}");
-              formdata.append("productId", "{{ product.id }}");
-              formdata.append("shop", "{{ shop.permanent_domain }}");
-              formdata.append("_action", "CREATE");
-
-              if(this.wishlisted){
-                this.wishlisted = false;
-                formdata.set("_action", "DELETE");
-              }
-
-              var requestOptions = {
-                method: 'POST',
-                body: formdata,
-                redirect: 'follow'
-              };
-
-              fetch(this.appUrl + "api/wishlist", requestOptions)
-                  .then(response => response.json())
-                  .then(result => {
-                      if(result.wishlisted){
-                        this.wishlisted = true;
-                      }else{
-                        this.wishlisted = false;
-                      }
-                  })
-                  .catch(error => console.log('error', error));
-
-
-          }
-      }))
-  })
-</script> {% endcomment %}
