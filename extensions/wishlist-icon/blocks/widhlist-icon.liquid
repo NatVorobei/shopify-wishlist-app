@@ -1,17 +1,42 @@
-<div class="wishlist-inspire__icon" x-data="wishlist">
-
-  <button type="button" @click.debounce="addToWishlist()">
-    <svg class="wishlist-inspire__icon--svg" viewBox="0 0 24 24" stroke-width="2" stroke="#000" :fill="wishlisted ? '#000': '#fff' ">
+<div class="wishlist-app" x-data="wishlist">
+  <button class="wishlist-app__addTo--btn" type="button" @click.debounce="addToWishlist()">
+    <svg class="wishlist-app__icon--svg" viewBox="0 0 24 24" stroke-width="2" stroke="#000" :fill="wishlisted ? 'red': '#fff' ">
       <path d="M12 21.35l-1.45-1.32C5.4 15.73 2 12.27 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.77-3.4 7.23-8.55 11.53L12 21.35z"/>
     </svg>
-    {% comment %} <svg class="wishlist-inspire__icon--svg" viewBox="0 0 24 24" stroke-width="2" stroke="{{ block.settings.colour }}" fill="{{ block.settings.colour }}">
-      <path d="M12 21.35l-1.45-1.32C5.4 15.73 2 12.27 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.77-3.4 7.23-8.55 11.53L12 21.35z"/>
-    </svg> {% endcomment %}
     {% if block.settings.text != blank %}
-      <span class="wishlist-inspire__icon--text">{{ block.settings.text }}</span>
+      <span class="wishlist-app__icon--text">{{ block.settings.text }}</span>
     {% endif %}
   </button>
 
+  <button type="button" class="wishlist-app__show-btn" @click="showModal = true">
+    View Wishlist
+  </button>
+
+  <div class="wishlist-modal" x-show="showModal" style="display: none;">
+    <div class="wishlist-modal__content" @click.away="showModal = false">
+      <h2 class="wishlist-modal__content--title">Your Wishlist 💖</h2>
+      <template x-if="wishlistItems.length > 0">
+        <ul class="wishlist-modal__content--list">
+          <template x-for="item in wishlistItems" :key="item.id">
+            <li class="wishlist-item">
+              <img :src="item.image" alt="" class="wishlist-item__image" width="200px" height="200px">
+              <div class="wishlist-item__details">
+                <p class="wishlist-item__details--title" x-text="item.title"></p>
+                <div class="wishlist-item__details--actions">
+                  <p class="wishlist-item__details--price" x-text="item.price"></p>
+                  <button class="wishlist-item__add-to-cart" @click="addToCart(item.id)">Add to Cart</button>
+                </div>
+                <button class="wishlist-item__remove" @click="removeFromWishlist(item.id)">✕</button>
+              </div>
+            </li>
+          </template>
+        </ul>
+      </template>
+      <p class="wishlist-modal__content--text" x-show="wishlistItems.length === 0">Your wishlist is empty.</p>
+
+      <button class="wishlist-modal__close" @click="showModal = false" style="font-size: 20px;">✕</button>
+    </div>
+  </div>
 </div>
 
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -20,57 +45,223 @@
   document.addEventListener('alpine:init', () => {
       Alpine.data('wishlist', () => ({
           init(){
-            const wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
-            this.wishlisted = wishlist.includes("{{ product.id }}");
+              this.loadWishlist();
+              this.wishlisted = this.wishlistItems.some(item => item.id === "{{ product.id }}");
           },
           wishlisted: false,
-          addToWishlist() {
-              let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
+          showModal: false,
+          wishlistItems: [],
 
+          addToWishlist() {
               const productData = {
                   id: "{{ product.id }}",
                   title: "{{ product.title }}",
                   price: "{{ product.price | money }}",
-                  image: "{{ product.featured_image | image_url: 'small' }}",
+                  image: "{{ product.featured_image | img_url: 'original' }}",
               };
-          
-              // Check if product is already in wishlist
+
+              // Load wishlist from localStorage
+              let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
+
               const productIndex = wishlist.findIndex(item => item.id === productData.id);
-          
+
               if (this.wishlisted) {
-                  wishlist.splice(productIndex, 1);
+                  wishlist.splice(productIndex, 1); // Remove product
                   this.wishlisted = false;
               } else {
-                  wishlist.push(productData);
+                  wishlist.push(productData); // Add product
                   this.wishlisted = true;
               }
-          
+
               localStorage.setItem('wishlist', JSON.stringify(wishlist));
-          
+              this.loadWishlist(); // Reload wishlist items
+          },
+
+          loadWishlist() {
+              this.wishlistItems = JSON.parse(localStorage.getItem('wishlist')) || [];
+          },
+          removeFromWishlist(productId) {
+            let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
+            wishlist = wishlist.filter(item => item.id !== productId);
+
+            localStorage.setItem('wishlist', JSON.stringify(wishlist));
+            this.loadWishlist();
+            if (productId === "{{ product.id }}") {
+                this.wishlisted = false;
+            }
+          },
+          addToCart(productId) {
+            fetch('/cart/add.js', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: "{{ product.variants.first.id }}", // Correct Variant ID
+                    quantity: 1
+                })
+              })
+              .then(response => {
+                  if (!response.ok) throw new Error('Failed to add to cart.');
+                  return response.json();
+              })
+              .then(data => {
+                  this.refreshCart();
+                  alert('Product added to cart!');
+              })
+              .catch(error => {
+                  console.error('Error adding to cart:', error);
+                  alert('Something went wrong while adding to the cart.');
+              });
+          },
+          refreshCart() {
+            fetch('/cart.js')
+              .then(response => response.json())
+              .then(cart => {
+                  let cartData = cart.items;
+                  console.log(cartData)
+                  document.dispatchEvent(new CustomEvent('cart:refresh', {
+                      bubbles: true,
+                      detail: cartData
+                  }));
+              })
+              .catch(error => console.error('Error fetching cart data:', error));
           }
-      }))
-  })
+      }));
+  });
 </script>
 
 <style>
-  .wishlist-inspire__icon{
+  .wishlist-app {
     display: flex;
     justify-content: center;
+    align-items: center;
     max-width: 44rem;
+    gap: 1rem;
   }
-  .wishlist-inspire__icon button{
-    background: none;
-    border: none;
-    padding: 0;
-    margin: 0;
+
+  .wishlist-app__addTo--btn,
+  .wishlist-app__show-btn
+  {
+    width: 50%;
     cursor: pointer;
     display: flex;
-    gap: 0.5rem;
+    justify-content: center;
     align-items: center;
+    gap: 10px;
+    height: 40px;
+    color: #fff;
+    background: #000;
+    border-radius: 5px;
+    border: 1px solid transparent;
   }
-  .wishlist-inspire__icon--svg{
-    width: 2rem;
-    height: 2rem;
+
+  .wishlist-app__addTo--btn:hover,
+  .wishlist-app__show-btn:hover {
+    background: #fff;
+    color: #000;
+    border: 1px solid #000;
+    transition: 0.2s all ease;
+  }
+  
+  .wishlist-app__icon--svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .wishlist-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    overflow: hidden;
+  }
+  .wishlist-modal__content {
+    position: relative;
+    background: #fff;
+    padding: 10px;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 1200px;
+    min-width: 320px;
+    min-height: 60vh;
+    overflow-y: auto;
+    margin: 0 10px;
+  }
+  .wishlist-modal__content--list {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 0;
+  }
+  .wishlist-modal__content--title {
+    margin: 10px 10px;
+  }
+  .wishlist-modal__content--text {
+    text-align: center;
+  }
+  .wishlist-item__details--price {
+    width: 50%;
+    margin: 10px 0;
+    font-size: 14px;
+    text-align: center;
+    line-height: normal;
+  }
+  .wishlist-modal__close,
+  .wishlist-item__remove
+  {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+  }
+  .wishlist-item__remove{
+    top: 3px;
+    right: 6px;
+  }
+  .wishlist-item {
+    border: 1px solid #dbe0e5;
+    background: #f9fafb;
+    border-radius: 5px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-direction: column;
+    padding: 10px;
+    height: auto;
+  }
+  .wishlist-item__details--title {
+  }
+  .wishlist-item__details--actions {
+    display: flex;
+    justify-content: center;
+    border: 1px solid #000;
+    border-radius: 5px;
+  }
+  .wishlist-item__add-to-cart {
+    width: 50%;
+    border: 1px solid transparent;
+    color: #fff;
+    padding: 4px 8px;
+    background: #000;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .wishlist-item__image {
+    width: 150px;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 4px;
   }
 </style>
 
