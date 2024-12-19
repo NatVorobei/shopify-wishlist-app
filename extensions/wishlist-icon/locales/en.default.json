@@ -1,10 +1,10 @@
 {
-  "ratings": {
-    "stars": {
-      "label": "Ratings"
-    },
-    "home": {
-      "recommendationText": "Recommended Product!"
-    }
+  "wishlist": {
+    "viewBtn": "View Wishlist"
+  },
+  "wishlistModal": {
+    "title": "My Wishlist",
+    "emptyModal": "Your wishlist is empty.",
+    "addToCartBtn": "Add to Cart"
   }
 }

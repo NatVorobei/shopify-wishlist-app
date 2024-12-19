@@ -1,30 +1,31 @@
 <div class="wishlist-app" x-data="wishlist">
   <button class="wishlist-app__addTo--btn" type="button" @click.debounce="addToWishlist()">
-    <svg class="wishlist-app__icon--svg" viewBox="0 0 24 24" stroke-width="2" stroke="#000" :fill="wishlisted ? 'red': '#fff' ">
+    <svg class="wishlist-app__icon--svg" viewBox="0 0 24 24" stroke-width="2" stroke="#000" :fill="wishlisted ? '{{ block.settings.color }}': '#fff' ">
       <path d="M12 21.35l-1.45-1.32C5.4 15.73 2 12.27 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.77-3.4 7.23-8.55 11.53L12 21.35z"/>
     </svg>
     {% if block.settings.text != blank %}
-      <span class="wishlist-app__icon--text">{{ block.settings.text }}</span>
+      <span class="wishlist-app__icon--text" x-text="wishlisted ? '{{ block.settings.active_text }}' : '{{ block.settings.text }}'"></span>
     {% endif %}
   </button>
 
   <button type="button" class="wishlist-app__show-btn" @click="showModal = true">
-    View Wishlist
+    {{ 'wishlist.viewBtn' | t }}
   </button>
 
   <div class="wishlist-modal" x-show="showModal" style="display: none;">
     <div class="wishlist-modal__content" @click.away="showModal = false">
-      <h2 class="wishlist-modal__content--title">Your Wishlist 💖</h2>
+      <h2 class="wishlist-modal__content--title">{{ 'wishlistModal.title' | t }} 💖</h2>
+      <hr>
       <template x-if="wishlistItems.length > 0">
         <ul class="wishlist-modal__content--list">
           <template x-for="item in wishlistItems" :key="item.id">
             <li class="wishlist-item">
-              <img :src="item.image" alt="" class="wishlist-item__image" width="200px" height="200px">
+              <img :src="item.image" alt="" class="wishlist-item__image" width="100%" height="100%">
               <div class="wishlist-item__details">
                 <p class="wishlist-item__details--title" x-text="item.title"></p>
                 <div class="wishlist-item__details--actions">
                   <p class="wishlist-item__details--price" x-text="item.price"></p>
-                  <button class="wishlist-item__add-to-cart" @click="addToCart(item.id)">Add to Cart</button>
+                  <button class="wishlist-item__add-to-cart" @click="addToCart(item.id)">{{ 'wishlistModal.addToCartBtn' | t }}</button>
                 </div>
                 <button class="wishlist-item__remove" @click="removeFromWishlist(item.id)">✕</button>
               </div>
@@ -32,7 +33,7 @@
           </template>
         </ul>
       </template>
-      <p class="wishlist-modal__content--text" x-show="wishlistItems.length === 0">Your wishlist is empty.</p>
+      <p class="wishlist-modal__content--text" x-show="wishlistItems.length === 0">{{ 'wishlistModal.emptyModal' | t }}</p>
 
       <button class="wishlist-modal__close" @click="showModal = false" style="font-size: 20px;">✕</button>
     </div>
@@ -90,14 +91,14 @@
                 this.wishlisted = false;
             }
           },
-          addToCart(productId) {
+          {% comment %} addToCart(productId) {
             fetch('/cart/add.js', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    id: "{{ product.variants.first.id }}", // Correct Variant ID
+                    id: "{{ product.variants.first.id }}", 
                     quantity: 1
                 })
               })
@@ -107,6 +108,7 @@
               })
               .then(data => {
                   this.refreshCart();
+                  this.updateCartUI();
                   alert('Product added to cart!');
               })
               .catch(error => {
@@ -119,16 +121,72 @@
               .then(response => response.json())
               .then(cart => {
                   let cartData = cart.items;
-                  console.log(cartData)
                   document.dispatchEvent(new CustomEvent('cart:refresh', {
                       bubbles: true,
                       detail: cartData
                   }));
               })
               .catch(error => console.error('Error fetching cart data:', error));
-          }
+          },
+          updateCartUI() {
+            fetch('/cart.js')
+            .then(response => response.json())
+            .then(cart => {
+                const cartCountBubble = document.querySelector('.cart-count-bubble span[aria-hidden="true"]');
+                if (cartCountBubble) {
+                    cartCountBubble.textContent = cart.item_count;
+                }
+            })
+            .catch(error => console.error('Error fetching cart data:', error));
+          } {% endcomment %}
+          addToCart(productId) {
+            console.log('Adding product to cart:', productId); // Debugging log
+            fetch('/cart/add.js', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: productId, // Use dynamic productId
+                    quantity: 1
+                })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to add to cart.');
+                return response.json();
+            })
+            .then(() => {
+                return fetch('/cart.js');
+            })
+            .then(response => response.json())
+            .then(cart => {
+                document.dispatchEvent(new CustomEvent('cart:updated', {
+                    bubbles: true,
+                    detail: cart
+                }));
+
+                const cartCountBubble = document.querySelector('.cart-count-bubble span[aria-hidden="true"]');
+                if (cartCountBubble) {
+                    cartCountBubble.textContent = cart.item_count;
+                }
+
+                alert('Product added to cart!');
+            })
+            .catch(error => {
+                console.error('Error adding to cart:', error);
+                alert('Something went wrong while adding to the cart.');
+            });
+        }
       }));
   });
+
+  document.addEventListener('cart:updated', (event) => {
+    const cart = event.detail;
+    console.log('Cart updated:', cart);
+    if (window.updateCartDrawer) {
+        window.updateCartDrawer(cart);
+    }
+});
 </script>
 
 <style>
@@ -184,30 +242,37 @@
   }
   .wishlist-modal__content {
     position: relative;
-    background: #fff;
-    padding: 10px;
-    border-radius: 8px;
-    width: 100%;
     max-width: 1200px;
     min-width: 320px;
+    width: 100%;
     min-height: 60vh;
-    overflow-y: auto;
+    max-height: 90vh;
+    background: #fff;
+    margin-top: 50px !important;
     margin: 0 10px;
+    padding: 10px;
+    border-radius: 8px;
+    overflow-y: auto;
   }
   .wishlist-modal__content--list {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     padding: 0;
+    margin: 0 20px 15px 20px;
   }
   .wishlist-modal__content--title {
-    margin: 10px 10px;
+    font-size: 21px;
+    margin: 15px 20px;
+  }
+  hr {
+    margin: 20px;
   }
   .wishlist-modal__content--text {
     text-align: center;
   }
   .wishlist-item__details--price {
-    width: 50%;
+    width: 40%;
     margin: 10px 0;
     font-size: 14px;
     text-align: center;
@@ -217,8 +282,8 @@
   .wishlist-item__remove
   {
     position: absolute;
-    top: 10px;
-    right: 10px;
+    top: 20px;
+    right: 30px;
     cursor: pointer;
     border: none;
     background: none;
@@ -229,7 +294,8 @@
     right: 6px;
   }
   .wishlist-item {
-    border: 1px solid #dbe0e5;
+    max-width: 220px;
+    border: 2px solid #dbe0e5;
     background: #f9fafb;
     border-radius: 5px;
     position: relative;
@@ -241,15 +307,17 @@
     height: auto;
   }
   .wishlist-item__details--title {
+    text-align: center;
+    line-height: normal;
   }
   .wishlist-item__details--actions {
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     border: 1px solid #000;
     border-radius: 5px;
   }
   .wishlist-item__add-to-cart {
-    width: 50%;
+    width: 60%;
     border: 1px solid transparent;
     color: #fff;
     padding: 4px 8px;
@@ -258,8 +326,6 @@
     cursor: pointer;
   }
   .wishlist-item__image {
-    width: 150px;
-    height: 150px;
     object-fit: cover;
     border-radius: 4px;
   }
@@ -283,9 +349,15 @@
       "default": "Add to wishlist"
     },
     {
+      "type": "text",
+      "id": "active_text",
+      "label": "Wishlisted Text",
+      "default": "Added to Wishlist"
+    },
+    {
       "type": "color",
-      "id": "colour",
-      "label": "Icon Colour",
+      "id": "color",
+      "label": "Icon Color",
       "default": "#ff0000"
     }
   ]

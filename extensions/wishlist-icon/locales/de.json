@@ -1,0 +1,10 @@
+{
+  "wishlist": {
+    "viewBtn": "Wunschliste anzeigen"
+  },
+  "wishlistModal": {
+    "title": "Meine Wunschliste",
+    "emptyModal": "Ihr Wunschzettel ist leer.",
+    "addToCartBtn": "Einkaufswagen"
+  }
+}
