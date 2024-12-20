@@ -44,149 +44,121 @@
 
 <script>
   document.addEventListener('alpine:init', () => {
-      Alpine.data('wishlist', () => ({
-          init(){
-              this.loadWishlist();
-              this.wishlisted = this.wishlistItems.some(item => item.id === "{{ product.id }}");
-          },
-          wishlisted: false,
-          showModal: false,
-          wishlistItems: [],
+    Alpine.data('wishlist', () => ({
+      wishlisted: false,
+      showModal: false,
+      wishlistItems: [],
+      cart: { items: [] },
 
-          addToWishlist() {
-              const productData = {
-                  id: "{{ product.id }}",
-                  title: "{{ product.title }}",
-                  price: "{{ product.price | money }}",
-                  image: "{{ product.featured_image | img_url: 'original' }}",
-              };
+      init() {
+        this.loadWishlist();
+        this.wishlisted = this.wishlistItems.some(item => item.id === "{{ product.id }}");
+        this.watchCartChanges();
+        this.fetchCart().then(cart => {
+          this.cart = cart;
+        });
+      },
 
-              // Load wishlist from localStorage
-              let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
+      async fetchCart() {
+        const response = await fetch('/cart.js');
+        const cart = await response.json();
+        console.log('Cart fetched:', cart);
+        return cart;
+      },
 
-              const productIndex = wishlist.findIndex(item => item.id === productData.id);
-
-              if (this.wishlisted) {
-                  wishlist.splice(productIndex, 1); // Remove product
-                  this.wishlisted = false;
-              } else {
-                  wishlist.push(productData); // Add product
-                  this.wishlisted = true;
-              }
-
-              localStorage.setItem('wishlist', JSON.stringify(wishlist));
-              this.loadWishlist(); // Reload wishlist items
-          },
-
-          loadWishlist() {
-              this.wishlistItems = JSON.parse(localStorage.getItem('wishlist')) || [];
-          },
-          removeFromWishlist(productId) {
-            let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
-            wishlist = wishlist.filter(item => item.id !== productId);
-
-            localStorage.setItem('wishlist', JSON.stringify(wishlist));
-            this.loadWishlist();
-            if (productId === "{{ product.id }}") {
-                this.wishlisted = false;
+      async watchCartChanges() {
+        const observer = new PerformanceObserver((list) => {
+          list.getEntries().forEach(entry => {
+            if (['xmlhttprequest', 'fetch'].includes(entry.initiatorType) && /\/cart\//.test(entry.name)) {
+              this.updateCart();
             }
-          },
-          {% comment %} addToCart(productId) {
-            fetch('/cart/add.js', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    id: "{{ product.variants.first.id }}", 
-                    quantity: 1
-                })
-              })
-              .then(response => {
-                  if (!response.ok) throw new Error('Failed to add to cart.');
-                  return response.json();
-              })
-              .then(data => {
-                  this.refreshCart();
-                  this.updateCartUI();
-                  alert('Product added to cart!');
-              })
-              .catch(error => {
-                  console.error('Error adding to cart:', error);
-                  alert('Something went wrong while adding to the cart.');
-              });
-          },
-          refreshCart() {
-            fetch('/cart.js')
-              .then(response => response.json())
-              .then(cart => {
-                  let cartData = cart.items;
-                  document.dispatchEvent(new CustomEvent('cart:refresh', {
-                      bubbles: true,
-                      detail: cartData
-                  }));
-              })
-              .catch(error => console.error('Error fetching cart data:', error));
-          },
-          updateCartUI() {
-            fetch('/cart.js')
-            .then(response => response.json())
-            .then(cart => {
-                const cartCountBubble = document.querySelector('.cart-count-bubble span[aria-hidden="true"]');
-                if (cartCountBubble) {
-                    cartCountBubble.textContent = cart.item_count;
-                }
-            })
-            .catch(error => console.error('Error fetching cart data:', error));
-          } {% endcomment %}
-          addToCart(productId) {
-            console.log('Adding product to cart:', productId); // Debugging log
-            fetch('/cart/add.js', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    id: productId, // Use dynamic productId
-                    quantity: 1
-                })
-            })
-            .then(response => {
-                if (!response.ok) throw new Error('Failed to add to cart.');
-                return response.json();
-            })
-            .then(() => {
-                return fetch('/cart.js');
-            })
-            .then(response => response.json())
-            .then(cart => {
-                document.dispatchEvent(new CustomEvent('cart:updated', {
-                    bubbles: true,
-                    detail: cart
-                }));
+          });
+        });
+        observer.observe({ entryTypes: ['resource'] });
+      },
 
-                const cartCountBubble = document.querySelector('.cart-count-bubble span[aria-hidden="true"]');
-                if (cartCountBubble) {
-                    cartCountBubble.textContent = cart.item_count;
-                }
+      async updateCart() {
+        const newCart = await this.fetchCart();
+        this.cart = newCart;
+        this.$nextTick(() => {
+          console.log('Cart updated:', this.cart);
+        });
+        document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true, detail: newCart }));
+      },
 
-                alert('Product added to cart!');
-            })
-            .catch(error => {
-                console.error('Error adding to cart:', error);
-                alert('Something went wrong while adding to the cart.');
-            });
+      addToWishlist() {
+        const productData = {
+          id: "{{ product.id }}",
+          variantId: "{{ product.variants.first.id }}",
+          title: "{{ product.title }}",
+          price: "{{ product.price | money }}",
+          image: "{{ product.featured_image | img_url: 'original' }}",
+        };
+
+        let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
+        const productIndex = wishlist.findIndex(item => item.id === productData.id);
+
+        if (this.wishlisted) {
+          wishlist.splice(productIndex, 1); // Remove product
+          this.wishlisted = false;
+        } else {
+          wishlist.push(productData); // Add product
+          this.wishlisted = true;
         }
-      }));
-  });
 
-  document.addEventListener('cart:updated', (event) => {
-    const cart = event.detail;
-    console.log('Cart updated:', cart);
-    if (window.updateCartDrawer) {
-        window.updateCartDrawer(cart);
-    }
-});
+        localStorage.setItem('wishlist', JSON.stringify(wishlist));
+        this.loadWishlist();
+      },
+
+      loadWishlist() {
+        this.wishlistItems = JSON.parse(localStorage.getItem('wishlist')) || [];
+      },
+
+      removeFromWishlist(productId) {
+        let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
+        wishlist = wishlist.filter(item => item.id !== productId);
+
+        localStorage.setItem('wishlist', JSON.stringify(wishlist));
+        this.loadWishlist();
+
+        if (productId === "{{ product.id }}") {
+          this.wishlisted = false;
+        }
+      },
+
+      addToCart(productId) {
+        console.log('Adding product to cart:', productId);
+
+        const wishlistProduct = this.wishlistItems.find(item => item.id === productId);
+
+        if (!wishlistProduct) {
+          console.error('Product not found in wishlist');
+          return;
+        }
+
+        const variantId = wishlistProduct.variantId;
+
+        fetch(window.Shopify.routes.root + 'cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: variantId, quantity: 1 }),
+        })
+          .then(response => {
+            if (!response.ok) throw new Error('Failed to add to cart.');
+            return response.json();
+          })
+          .then(() => {
+            this.updateCart();
+            document.dispatchEvent(new CustomEvent('cart:added', { bubbles: true }));
+            alert('Product added to cart!');
+          })
+          .catch(error => {
+            console.error('Error adding to cart:', error);
+            alert('Something went wrong while adding the product to the cart.');
+          });
+      },
+    }));
+  });
 </script>
 
 <style>
@@ -212,6 +184,7 @@
     background: #000;
     border-radius: 5px;
     border: 1px solid transparent;
+    letter-spacing: 1px;
   }
 
   .wishlist-app__addTo--btn:hover,
@@ -231,13 +204,13 @@
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    width: 100vw;
+    height: 100vh;
     background: rgba(0, 0, 0, 0.5);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 100;
+    z-index: 99999999999999 !important;
     overflow: hidden;
   }
   .wishlist-modal__content {
@@ -295,7 +268,7 @@
   }
   .wishlist-item {
     max-width: 220px;
-    border: 2px solid #dbe0e5;
+    border: 1px solid #cccccc;
     background: #f9fafb;
     border-radius: 5px;
     position: relative;
@@ -324,6 +297,9 @@
     background: #000;
     border-radius: 5px;
     cursor: pointer;
+  }
+  .wishlist-item__add-to-cart:hover {
+    background: #3f3f3f;
   }
   .wishlist-item__image {
     object-fit: cover;
