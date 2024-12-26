@@ -1,3 +1,4 @@
+{% comment %} {% render 'ajaxify-cart' %} {% endcomment %}
 <div class="wishlist-app" x-data="wishlist">
   <button class="wishlist-app__addTo--btn" type="button" @click.debounce="addToWishlist()">
     <svg class="wishlist-app__icon--svg" viewBox="0 0 24 24" stroke-width="2" stroke="#000" :fill="wishlisted ? '{{ block.settings.color }}': '#fff' ">
@@ -19,14 +20,24 @@
       <template x-if="wishlistItems.length > 0">
         <ul class="wishlist-modal__content--list">
           <template x-for="item in wishlistItems" :key="item.id">
-            <li class="wishlist-item">
+            <li class="wishlist-item" :data-product-id="item.id">
               <img :src="item.image" alt="" class="wishlist-item__image" width="100%" height="100%">
               <div class="wishlist-item__details">
                 <p class="wishlist-item__details--title" x-text="item.title"></p>
                 <div class="wishlist-item__details--actions">
                   <p class="wishlist-item__details--price" x-text="item.price"></p>
-                  <button class="wishlist-item__add-to-cart" @click="addToCart(item.id)">{{ 'wishlistModal.addToCartBtn' | t }}</button>
+                  {% comment %} <button class="wishlist-item__add-to-cart" @click="addToCart(item.id)">
+                    <span>Add to Cart</span>
+                  </button> {% endcomment %}
                 </div>
+                <div>
+                  <form method="post" action="/cart/add" @submit.prevent="addToCart(item.variantId, $event)">
+                    <input type="hidden" name="id" :value="item.variantId" />
+                    <button type="submit" class="wishlist-item__add-to-cart" :disabled="isAddingToCart">
+                      <span>{{ 'wishlistModal.addToCartBtn' | t }}</span>
+                    </button>
+                  </form> 
+                </div> 
                 <button class="wishlist-item__remove" @click="removeFromWishlist(item.id)">✕</button>
               </div>
             </li>
@@ -36,19 +47,32 @@
       <p class="wishlist-modal__content--text" x-show="wishlistItems.length === 0">{{ 'wishlistModal.emptyModal' | t }}</p>
 
       <button class="wishlist-modal__close" @click="showModal = false" style="font-size: 20px;">✕</button>
+
+      <div class="wishlist-notification" x-show="showNotification" style="display: none;" x-transition>
+        <div class="wishlist-notification__content">
+          <img :src="notificationData.image" alt="notification-image" class="wishlist-notification__image" width="100%" height="100%">
+          <div>
+            <p class="wishlist-notification__text">{{ 'Product added to cart!' }}</p>
+            <p class="wishlist-notification__product-title" x-text="notificationData.title"></p>
+          </div>
+          <button class="wishlist-notification__close" @click="hideNotification">✕</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
-<script>
+{% comment %} <script>
   document.addEventListener('alpine:init', () => {
     Alpine.data('wishlist', () => ({
       wishlisted: false,
       showModal: false,
       wishlistItems: [],
       cart: { items: [] },
+      showNotification: false,
+      notificationData: { image: '', title: '' },
 
       init() {
         this.loadWishlist();
@@ -81,9 +105,9 @@
         const newCart = await this.fetchCart();
         this.cart = newCart;
         this.$nextTick(() => {
-          console.log('Cart updated:', this.cart);
+          console.log('Cart updated:', newCart);
         });
-        document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true, detail: newCart }));
+        document.dispatchEvent(new CustomEvent('cart:updated', { bubbles: true, detail: newCart }));
       },
 
       addToWishlist() {
@@ -150,15 +174,182 @@
           .then(() => {
             this.updateCart();
             document.dispatchEvent(new CustomEvent('cart:added', { bubbles: true }));
-            alert('Product added to cart!');
+            this.showNotificationWithProduct(wishlistProduct);
           })
           .catch(error => {
             console.error('Error adding to cart:', error);
             alert('Something went wrong while adding the product to the cart.');
           });
       },
+
+      showNotificationWithProduct(product) {
+        this.notificationData = {
+          image: product.image,
+          title: product.title,
+        };
+        this.showNotification = true;
+      
+        setTimeout(() => {
+          this.hideNotification();
+        }, 4000);
+      },
+
+      hideNotification() {
+        this.showNotification = false;
+      },
     }));
   });
+</script> {% endcomment %}
+
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('wishlist', () => ({
+      wishlisted: false,
+      showModal: false,
+      wishlistItems: [],
+      showNotification: false,
+      isAddingToCart: false,
+      cart: {},
+      notificationData: { image: '', title: '' },
+  
+      init() {
+        this.loadWishlist();
+        this.wishlisted = this.wishlistItems.some(item => item.id === "{{ product.id }}");
+        fetch('/cart.js')
+        .then(response => response.json())
+        .then(cart => {
+            this.cart = cart;
+        })
+        .catch(error => console.error('Error fetching cart:', error));
+
+        document.addEventListener('cart-updated', (event) => {
+          console.log('Cart updated:', event.detail);
+          this.cart = event.detail;
+        });
+      },
+  
+      addToWishlist() {
+        const productData = {
+          id: "{{ product.id }}",
+          variantId: "{{ product.variants.first.id }}",
+          title: "{{ product.title }}",
+          price: "{{ product.price | money }}",
+          image: "{{ product.featured_image | img_url: 'original' }}",
+        };
+  
+        let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
+        const productIndex = wishlist.findIndex(item => item.id === productData.id);
+  
+        if (this.wishlisted) {
+          wishlist.splice(productIndex, 1); // Remove product
+          this.wishlisted = false;
+        } else {
+          wishlist.push(productData); // Add product
+          this.wishlisted = true;
+        }
+  
+        localStorage.setItem('wishlist', JSON.stringify(wishlist));
+        this.loadWishlist();
+      },
+  
+      loadWishlist() {
+        this.wishlistItems = JSON.parse(localStorage.getItem('wishlist')) || [];
+      },
+  
+      removeFromWishlist(productId) {
+        let wishlist = JSON.parse(localStorage.getItem('wishlist')) || [];
+        wishlist = wishlist.filter(item => item.id !== productId);
+  
+        localStorage.setItem('wishlist', JSON.stringify(wishlist));
+        this.loadWishlist();
+  
+        if (productId === "{{ product.id }}") {
+          this.wishlisted = false;
+        }
+      },
+
+      addToCart(variantId, event) {
+        event.preventDefault();
+      
+        const product = this.wishlistItems.find(item => item.variantId === variantId);
+        if (!product) return;
+      
+        this.toggleAddButton(variantId, true, 'Adding...');
+      
+        const data = {
+          id: variantId,
+          quantity: 1,
+        };
+      
+        fetch('/cart/add.js', {
+          method: 'POST',
+          cache: 'no-cache',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        })
+          .then(response => {
+            if (!response.ok) throw new Error('Failed to add product to cart');
+            return response.json();
+          })
+          .then(() => {
+            this.showNotificationWithProduct(product);
+            this.toggleAddButton(variantId, false, window.variantStrings.addToCart);
+            return this.updateCart(); 
+          })
+          .catch(error => {
+            console.error('Error adding product to cart:', error);
+            this.toggleAddButton(variantId, false, 'Add to Cart');
+          });
+      },
+      
+      toggleAddButton(variantId, disable = true, text) {
+        const form = document.querySelector(`form input[value="${variantId}"]`)?.closest('form');
+        if (!form) return;
+      
+        const button = form.querySelector('.wishlist-item__add-to-cart');
+        if (!button) return;
+      
+        const buttonText = button.querySelector('span');
+      
+        if (disable) {
+          button.setAttribute('disabled', 'disabled');
+          if (text) buttonText.textContent = text;
+        } else {
+          button.removeAttribute('disabled');
+          buttonText.textContent = text || 'Add to Cart';
+        }
+      },
+      
+      updateCart() {
+        fetch('/cart.js')
+          .then(response => response.json())
+          .then(cart => {
+            this.cart = cart; 
+            dispatchEvent(new CustomEvent('cart-updated', { detail: cart }));
+          })
+          .catch(error => console.error('Error fetching cart:', error));
+      },
+
+      showNotificationWithProduct(product) {
+        this.notificationData = {
+          image: product.image,
+          title: product.title,
+        };
+        this.showNotification = true;
+  
+        setTimeout(() => {
+          this.hideNotification();
+        }, 4000);
+      },
+  
+      hideNotification() {
+        this.showNotification = false;
+      },
+    }));
+  });
+  
 </script>
 
 <style>
@@ -221,7 +412,7 @@
     min-height: 60vh;
     max-height: 90vh;
     background: #fff;
-    margin-top: 50px !important;
+    margin-top: 90px !important;
     margin: 0 10px;
     padding: 10px;
     border-radius: 8px;
@@ -290,20 +481,73 @@
     border-radius: 5px;
   }
   .wishlist-item__add-to-cart {
-    width: 60%;
+    width: 100%;
     border: 1px solid transparent;
     color: #fff;
-    padding: 4px 8px;
+    padding: 8px 8px;
     background: #000;
     border-radius: 5px;
     cursor: pointer;
   }
+  {% comment %} .wishlist-item__add-to-cart {
+    width: 100%;
+    border: 1px solid transparent;
+    color: #fff;
+    padding: 8px 8px;
+    background: #000;
+    border-radius: 5px;
+    cursor: pointer;
+  } {% endcomment %}
   .wishlist-item__add-to-cart:hover {
     background: #3f3f3f;
   }
   .wishlist-item__image {
     object-fit: cover;
     border-radius: 4px;
+  }
+  .wishlist-notification {
+    position: fixed;
+    top: 90px;
+    left: 10px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    z-index: 1000;
+    max-width: 300px;
+  }
+  .wishlist-notification__image {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+    margin-right: 10px;
+    border-radius: 5px;
+  }
+  .wishlist-notification__content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+  .wishlist-notification__text {
+    font-size: 14px;
+    font-weight: bold;
+    margin: 0;
+  }
+  .wishlist-notification__product-title {
+    font-size: 12px;
+    margin: 0;
+    color: #555;
+  }
+  .wishlist-notification__close {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    margin-left: auto;
+    cursor: pointer;
+    align-self: flex-start;
   }
 </style>
 
